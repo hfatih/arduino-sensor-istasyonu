@@ -2,7 +2,7 @@
 
 Dosyalar: [sensor_istasyonu.ino](sensor_istasyonu/sensor_istasyonu.ino) · [sensor_panel.py](sensor_panel.py)
 
-Güncel durum (yazılım 1.3.0): OLED kendiliğinden döner, 30 sn bilgisayar (işlemci ve ekran kartı modeli, CPU/RAM/GPU yüzdeleri, RAM ve VRAM GB, GPU sıcaklığı), 5 sn sensör (sıcaklık, nem, basınç). IR kumanda projeden çıkarıldı. Bilgisayar verisi panelden gelir; panel kapalıysa OLED yalnız sensör sayfasında kalır.
+Güncel durum (yazılım 1.3.1): OLED kendiliğinden döner, 30 sn bilgisayar (işlemci ve ekran kartı modeli, CPU/RAM/GPU yüzdeleri, RAM ve VRAM GB, GPU sıcaklığı), 5 sn sensör (sıcaklık, nem, basınç). IR kumanda projeden çıkarıldı. Bilgisayar verisi panelden gelir; panel kapalıysa OLED yalnız sensör sayfasında kalır.
 
 ## A. Donanım denetimi
 
@@ -112,7 +112,7 @@ Bilmen gerekenler:
 | OLED'de model adı boş | Panel adları 10 saniyede bir yollar, bekle |
 | Panelde "Port meşgul" | Seri Monitör ya da başka program portu tutuyor |
 | Yükleme "avrdude" hatası | Port panelde açık; önce "Bağlantıyı kes" |
-| Arduino `line_too_long` / `bad_json` yolluyor | Komut satırı 63 karakteri geçmiş ya da iki satır aralıksız gelmiş (Uno'nun alım tamponu 64 bayt) |
+| Arduino `line_too_long` / `bad_json` / `unknown_cmd` yolluyor | Hata mesajındaki `line` alanı kartın aldığı satırı gösterir. Ortası eksikse satırlar çok sık gelmiş: Uno sayfa değiştirirken ~150 ms seri porta bakamaz ve 64 baytlık tamponu taşar. Satırları en az 330 ms arayla ve 63 karakterin altında yolla |
 
 ## Protokol
 
@@ -125,7 +125,7 @@ Arduino → PC, satır başına bir JSON:
 | `sensor_error` | `code` (`not_found` / `read_failed` / `out_of_range`), `chip_id`, `uptime_ms` | Hata anında ve her başarısız yeniden denemede (5 sn) |
 | `page` | `page` (0 sensör, 1 bilgisayar), `source` (`auto`) | Sayfa değişince |
 | `status` | `hello` ile aynı | `get_status` yanıtı |
-| `error` | `code` (`bad_json` / `bad_pc` / `unknown_cmd` / `line_too_long`) | Reddedilen komut |
+| `error` | `code` (`bad_json` / `bad_pc` / `unknown_cmd` / `line_too_long`), `line` (kartın aldığı satır, `"` yerine `'`) | Reddedilen komut |
 
 PC → Arduino (her satır `\n` ile biter, en fazla 63 karakter):
 
@@ -140,7 +140,7 @@ PC → Arduino (her satır `\n` ile biter, en fazla 63 karakter):
 
 - Taslak Arduino Uno için uyarısız derlenir: 27.990 bayt flash (%86), 936 bayt RAM (%45).
 - Gerçek donanımda denendi: klon Uno (CH340) + BMP280 (SPI) + SSD1306 OLED + NVIDIA ekran kartlı Windows 11 bilgisayar. Sıcaklık, basınç, sayfa dönüşü ve bilgisayar sayfası çalışıyor.
-- **DHT11 okuma kodu gerçek sensörle denenmedi.**
+- DHT11 okuma kodu D2'deki gerçek bir DHT11 ile çalışıyor.
 - Gerçek BME280 (çip kimliği 0x60) ile denenmedi; test edilen modül BMP280 çıktı.
 - AMD ve Intel ekran kartlarında GPU bilgisi gelmez.
 - Panelin kopma, bozuk satır ve meşgul port davranışı sahte seri portla denendi.

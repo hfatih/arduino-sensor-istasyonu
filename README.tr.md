@@ -37,7 +37,7 @@ Her şey USB seri kablosu üzerinden yerelde çalışır. Ağ, bulut ya da hesap
 | ![Panel](docs/images/panel.png) |
 | *10 dakikalık grafikli sensör kartları ve bilgisayarın CPU, RAM, GPU durumu.* |
 
-Gerçek donanımdan alındı. O kurulumdaki sensör BMP280 olduğu ve nem ölçmediği için nem kartı boş.
+Gerçek donanımdan, yaklaşık üç dakikalık veriyle alındı: sıcaklık ve basınç BMP280'den, nem DHT11'den.
 
 OLED 16×8 karakterlik bir ekran. İki sayfası şöyle görünür:
 
@@ -112,7 +112,7 @@ flowchart LR
     FW --> OLED
 ```
 
-İki yönde de her satır tek bir JSON nesnesidir. Karta giden her komut 63 karakterin altında tutulur; Uno'nun seri alım tamponu 64 bayttır ve taslak ekran çizerken gelen daha uzun satırın sonu kesilir. Mesajların tam listesi [KURULUM.md](KURULUM.md#protokol) içinde.
+İki yönde de her satır tek bir JSON nesnesidir. Uno'nun seri alım tamponu yalnız 64 bayttır ve taslak OLED'i yeniden çizerken yaklaşık 150 ms boyunca onu okuyamaz; bu yüzden her komut 63 karakterin altında tutulur ve bilgisayar satırlar arasında en az 330 ms bekler. Kart açılırken bir şey kaybolmasın diye ilk mesajı gelmeden de göndermeye başlamaz. Mesajların tam listesi [KURULUM.md](KURULUM.md#protokol) içinde.
 
 ## Bağlantılar
 
@@ -186,8 +186,8 @@ Ayrıştırma ve komut oluşturma mantığını sınar. Donanım ve ek paket ger
 ## Denenenler ve denenmeyenler
 
 - Taslak Uno için uyarısız derlenir: 27.990 bayt flash (%86), 936 bayt RAM (%45).
-- Gerçek donanımda çalıştırıldı: CH340'lı klon Uno, SPI üzerinden BMP280, SSD1306 OLED ve NVIDIA ekran kartlı Windows 11 bilgisayar.
-- **DHT11 okuyucusu gerçek bir DHT11 ile henüz çalıştırılmadı.**
+- Gerçek donanımda çalıştırıldı: CH340'lı klon Uno, SPI üzerinden BMP280, DHT11, SSD1306 OLED ve NVIDIA ekran kartlı Windows 11 bilgisayar. Altı sayfa değişimi içeren 100 saniyelik panel trafiğinde reddedilen satır olmadı.
+- DHT11 okuyucusu D2'deki gerçek bir DHT11 ile çalışıyor.
 - Gerçek BME280 (çip kimliği 0x60) ile çalıştırılmadı; eldeki modül BMP280 çıktı.
 - GPU verisi için NVIDIA kart gerekir. AMD ve Intel'de panel GPU bilgisinin alınamadığını yazar, OLED `--` gösterir.
 - OLED yazıları yalnız ASCII'dir; fontta Türkçe harf ve derece işareti yok.

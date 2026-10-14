@@ -143,20 +143,32 @@ def cpu_model():
         return ""
 
 
-def pc_commands(cpu, ram_pct, ram_used, ram_total, gpu, cpu_name, with_info):
-    """OLED'in bilgisayar sayfasi icin komutlar. Her biri 63 karakterin altinda:
-    Uno'nun seri alim tamponu 64 bayt, uzun satirin sonu kaybolur."""
+# Karta giden satirlar arasi en az bu kadar sure birakilir. Uno sayfa degistirirken
+# ~150 ms seri porta bakamaz; o arada ikinci bir satir gelirse 64 baytlik alim
+# tamponu tasar ve satirin ortasindan bayt kaybolur (gercek kartta olculdu).
+SEND_GAP_S = 0.33
+
+
+def pc_commands(cpu, ram_pct, ram_used, ram_total, gpu, cpu_name, info=None):
+    """OLED'in bilgisayar sayfasi icin komutlar. Her biri 63 karakterin altinda.
+    info: None, "cpu" ya da "gpu" -> o model adi da eklenir (saniyede en fazla 3 satir)."""
     cmd = {"cmd": "pc", "cpu": round(cpu), "ram": round(ram_pct)}
     mem = {"cmd": "pcmem", "ru": round(ram_used / 2**30 * 10), "rt": round(ram_total / 2**30 * 10)}
     if gpu:
         cmd.update(gpu=round(gpu["util"]), gt=round(gpu["temp"]))
         mem.update(vu=round(gpu["used_mb"] / 1024 * 10), vt=round(gpu["total_mb"] / 1024 * 10))
     out = [cmd, mem]
-    if with_info:
-        gpu_name = short_name(gpu["name"]) if gpu else "GPU yok"
+    if info == "cpu":
         out.append({"cmd": "pcinfo", "cn": (short_name(cpu_name) or "CPU").replace(" ", "_")})
+    elif info == "gpu":
+        gpu_name = short_name(gpu["name"]) if gpu else "GPU yok"
         out.append({"cmd": "pcinfo", "gn": gpu_name.replace(" ", "_")})
     return out
+
+
+def info_turn(n):
+    """n. saniyede hangi model adi gonderilir: 10 sn'de bir islemci, ardindan ekran karti."""
+    return {0: "cpu", 1: "gpu"}.get(n % 10)
 
 
 def fmt_uptime(ms):
@@ -247,6 +259,7 @@ class App:
         self.history = deque(maxlen=HISTORY_S + 60)  # (t, sicaklik, nem, basinc)
         self.link = None
         self.link_open = False
+        self.ready = False        # Arduino acilisini bitirdi mi (ilk hello/telemetry geldi)
         self.want = False         # kullanici bagli kalmak istiyor mu
         self.last_port = None
         self.last_attempt = 0.0
@@ -258,11 +271,10 @@ class App:
         self.pc_sends = 0
 
         root.title("Sensör İstasyonu")
-        root.minsize(820, 600)
-        root.geometry("980x680")
         self.style = ttk.Style(root)
         self.style.theme_use("clam")
         self._build()
+        self._fit_window()
         self.apply_theme()
         self.refresh_ports()
 
@@ -354,7 +366,9 @@ class App:
             self._label(box, title, fg="muted", font=FONT_TITLE).grid(row=0, column=0, sticky="w")
             self.pc_bar[key] = ttk.Progressbar(box, maximum=100)
             self.pc_bar[key].grid(row=1, column=0, sticky="ew", pady=4)
-            self.pc_txt[key] = self._label(box, "—", font=FONT_SMALL, anchor="w")
+            # width=1: uzun metin pencereyi zorla genisletmesin, gerekirse kirpilsin
+            self.pc_txt[key] = self._label(box, "—", font=FONT_SMALL, anchor="w", justify="left",
+                                           width=1)
             self.pc_txt[key].grid(row=2, column=0, sticky="ew")
 
         # durum satiri
@@ -362,6 +376,18 @@ class App:
                                       font=FONT_SMALL, anchor="w", padx=12, pady=8)
         self.status_lbl.grid(row=4, column=0, sticky="ew")
         self.status_kind = "muted"
+
+    def _fit_window(self):
+        """Pencereyi icerigin istedigi boyuta acar; ekrandan buyukse ekranin %92'sine sigdirir.
+        Yuksek DPI'da yazilar buyudugu icin sabit piksel boyutu kirpiliyordu."""
+        root = self.root
+        root.update_idletasks()
+        sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+        req_w, req_h = root.winfo_reqwidth(), root.winfo_reqheight()
+        w = min(max(req_w, int(sw * 0.55)), int(sw * 0.92))
+        h = min(max(req_h, int(sh * 0.62)), int(sh * 0.88))
+        root.minsize(min(req_w, w), min(req_h, h))
+        root.geometry(f"{w}x{h}+{(sw - w) // 2}+{max(0, (sh - h) // 3)}")
 
     def apply_theme(self):
         p = self.pal = DARK if self.dark_var.get() else LIGHT
@@ -431,6 +457,7 @@ class App:
             self.link.stop()  # is parcacigi en gec 0,1 sn icinde portu kapatip cikar
         self.link = None
         self.link_open = False
+        self.ready = False
         self.sensor = None
         self.page = None
 
@@ -459,6 +486,8 @@ class App:
 
     def handle(self, m):
         kind = m["type"]
+        if kind in ("hello", "status", "telemetry"):
+            self.ready = True
         if kind == "_pc":
             self.show_pc(m)
         elif kind == "_open":
@@ -517,26 +546,25 @@ class App:
     def show_pc(self, m):
         self.pc_bar["cpu"]["value"] = m["cpu"]
         cpu_name = short_name(m["cpu_name"])
-        self.pc_txt["cpu"].configure(text=f"%{m['cpu']:.0f}" + (f" · {cpu_name}" if cpu_name else ""))
+        self.pc_txt["cpu"].configure(text=f"%{m['cpu']:.0f}\n{cpu_name or 'İşlemci'}")
         self.pc_bar["ram"]["value"] = m["ram_pct"]
         self.pc_txt["ram"].configure(
-            text=f"%{m['ram_pct']:.0f} · {m['ram_used'] / 2**30:.1f} / {m['ram_total'] / 2**30:.1f} GB")
+            text=f"%{m['ram_pct']:.0f}\n{m['ram_used'] / 2**30:.1f} / {m['ram_total'] / 2**30:.1f} GB kullanımda")
         g = m["gpu"]
-        if self.link and self.link_open:  # OLED'in bilgisayar sayfasi bu veriyle dolar
-            # Kisa satirlar 300 ms arayla gider; adlar 10 sn'de bir (Arduino resetlenirse geri gelsin)
-            self.pc_sends += 1
+        if self.link and self.link_open and self.ready:  # OLED'in bilgisayar sayfasi bu veriyle dolar
             cmds = pc_commands(m["cpu"], m["ram_pct"], m["ram_used"], m["ram_total"], g,
-                               m["cpu_name"], self.pc_sends % 10 == 1)
+                               m["cpu_name"], info_turn(self.pc_sends))
+            self.pc_sends += 1
             for i, cmd in enumerate(cmds):
-                self.root.after(300 * i, self.send_if_open, cmd)
+                self.root.after(int(SEND_GAP_S * 1000) * i, self.send_if_open, cmd)
         self.pc_bar["gpu"]["value"] = g["util"] if g else 0
         self.pc_txt["gpu"].configure(
-            text=(f"%{g['util']:.0f} · {g['temp']:.0f} °C · "
-                  f"{g['used_mb'] / 1024:.1f} / {g['total_mb'] / 1024:.1f} GB · {g['name']}")
-            if g else "GPU bilgisi alınamıyor (yalnızca NVIDIA / nvidia-smi)")
+            text=(f"%{g['util']:.0f} · {g['temp']:.0f} °C · VRAM {g['used_mb'] / 1024:.1f} / "
+                  f"{g['total_mb'] / 1024:.1f} GB\n{short_name(g['name'])}")
+            if g else "GPU bilgisi alınamıyor\n(yalnızca NVIDIA / nvidia-smi)")
 
     def send_if_open(self, cmd):
-        if self.link and self.link_open:
+        if self.link and self.link_open and self.ready:
             self.link.send(cmd)
 
     # ---- gosterim
@@ -575,7 +603,12 @@ class App:
 
     def draw_charts(self):
         now = time.monotonic()
-        t0 = now - HISTORY_S
+        # Zaman ekseni eldeki veri kadar (en az 1 dk, en fazla HISTORY_S); boylece
+        # baglandiktan hemen sonra cizgi grafigin tamamina yayilir.
+        first = next((row[0] for row in self.history if row[0] >= now - HISTORY_S), now)
+        span = min(max(now - first, 60.0), HISTORY_S)
+        t0 = now - span
+        span_txt = f"-{span / 60:.0f} dk" if span >= 90 else f"-{span:.0f} sn"
         p = self.pal
         for idx, (key, _title, _unit, color, min_span) in enumerate(SENSORS, start=1):
             cv = self.charts[key]
@@ -588,7 +621,7 @@ class App:
             vals = [v for _, v in pts if v is not None]
             cv.create_line(left, top, right, top, fill=p["grid"])
             cv.create_line(left, bottom, right, bottom, fill=p["grid"])
-            cv.create_text(left, h - 8, text=f"-{HISTORY_S // 60} dk", anchor="w",
+            cv.create_text(left, h - 8, text=span_txt, anchor="w",
                            fill=p["muted"], font=FONT_SMALL)
             cv.create_text(right, h - 8, text="şimdi", anchor="e", fill=p["muted"], font=FONT_SMALL)
             if not vals:
@@ -601,6 +634,10 @@ class App:
                 lo, hi = mid - min_span / 2, mid + min_span / 2
             cv.create_text(left - 5, top, text=f"{hi:.1f}", anchor="e", fill=p["muted"], font=FONT_SMALL)
             cv.create_text(left - 5, bottom, text=f"{lo:.1f}", anchor="e", fill=p["muted"], font=FONT_SMALL)
+            mid_y = (top + bottom) / 2
+            cv.create_line(left, mid_y, right, mid_y, fill=p["grid"], dash=(2, 4))
+            cv.create_text(left - 5, mid_y, text=f"{(lo + hi) / 2:.1f}", anchor="e",
+                           fill=p["muted"], font=FONT_SMALL)
 
             seg, prev_t = [], None
 
@@ -617,7 +654,7 @@ class App:
                     flush()  # gecersiz olcum ya da veri kesintisi: cizgi kopar
                 prev_t = t
                 if v is not None:
-                    seg += [left + (t - t0) / HISTORY_S * (right - left),
+                    seg += [left + (t - t0) / span * (right - left),
                             top + (hi - v) / (hi - lo) * (bottom - top)]
             flush()
 
@@ -649,15 +686,15 @@ def headless(port=None):
                     if n % 5 == 0:  # nvidia-smi her calismada ~0,1 sn CPU yer; 5 sn'de bir yeter
                         gpu = read_gpu(nvsmi)
                     cmds = pc_commands(psutil.cpu_percent(None), vm.percent, vm.used, vm.total,
-                                       gpu, cpu_name, n % 10 == 0)
+                                       gpu, cpu_name, info_turn(n))
                     n += 1
                     for cmd in cmds:
                         ser.write(json.dumps(cmd, separators=(",", ":")).encode() + b"\n")
                         for line in ser.read(4096).splitlines():  # gelen veriyi bosalt
                             if b'"telemetry"' not in line:
                                 print(line.decode("utf-8", "replace"), flush=True)
-                        time.sleep(0.3)
-                    time.sleep(max(0.0, 1.0 - 0.3 * len(cmds)))
+                        time.sleep(SEND_GAP_S)
+                    time.sleep(max(0.0, 1.0 - SEND_GAP_S * len(cmds)))
         except (serial.SerialException, OSError) as exc:
             print("baglanti yok:", exc, flush=True)
             time.sleep(RETRY_S)
@@ -688,10 +725,14 @@ def selftest():
     assert len(short_name("x" * 40)) == 16
     gpu = {"name": "NVIDIA GeForce RTX 4070 Laptop GPU", "util": 100.0, "temp": 100.0,
            "used_mb": 24000.0, "total_mb": 24576.0}
-    cmds = pc_commands(100.0, 100.0, 127.5 * 2**30, 128 * 2**30, gpu, "AMD Ryzen 9 7945HX3D", True)
+    cmds = pc_commands(100.0, 100.0, 127.5 * 2**30, 128 * 2**30, gpu, "AMD Ryzen 9 7945HX3D", "cpu")
+    cmds += pc_commands(100.0, 100.0, 127.5 * 2**30, 128 * 2**30, gpu, "", "gpu")[2:]
     assert [c["cmd"] for c in cmds] == ["pc", "pcmem", "pcinfo", "pcinfo"]
     assert all(len(json.dumps(c, separators=(",", ":"))) < 63 for c in cmds), cmds
-    assert len(pc_commands(1, 2, 2**30, 2**31, None, "", False)) == 2
+    assert len(pc_commands(1, 2, 2**30, 2**31, None, "")) == 2
+    # saniyede en fazla 3 satir: 3 * SEND_GAP_S bir saniyeye sigmali
+    assert max(len(pc_commands(1, 2, 1, 2, gpu, "x", info_turn(n))) for n in range(20)) * SEND_GAP_S < 1.0
+    assert [info_turn(n) for n in range(12)] == ["cpu", "gpu"] + [None] * 8 + ["cpu", "gpu"]
     print("selftest: tamam")
 
 

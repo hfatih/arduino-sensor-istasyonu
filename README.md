@@ -37,7 +37,7 @@ Everything runs locally over a USB serial cable. No network, no cloud, no accoun
 | ![Dashboard](docs/images/panel.png) |
 | *Live sensor cards with 10-minute charts, plus CPU, RAM and GPU of the PC.* |
 
-Captured from real hardware. The sensor in that build is a BMP280, which has no humidity channel, so the humidity card is empty.
+Captured from real hardware: a BMP280 for temperature and pressure, a DHT11 for humidity, after about three minutes of data.
 
 The OLED is a 16×8 character display. Its two pages look like this:
 
@@ -112,7 +112,7 @@ flowchart LR
     FW --> OLED
 ```
 
-Both directions use one JSON object per line. Every command sent to the board is kept under 63 characters, because the Uno's serial receive buffer is 64 bytes and a longer line would be cut while the sketch is busy drawing. The full message reference is in [KURULUM.md](KURULUM.md#protokol).
+Both directions use one JSON object per line. The Uno's serial receive buffer is only 64 bytes and the sketch cannot read it for about 150 ms while it redraws the OLED, so every command is kept under 63 characters and the PC leaves at least 330 ms between lines. It also waits for the board's first message before sending, so nothing is lost while the board boots. The full message reference is in [KURULUM.md](KURULUM.md#protokol).
 
 ## Wiring
 
@@ -186,8 +186,8 @@ For a 1.3" SH1106 display, change the display class as described in the comment 
 ## Tested and not tested
 
 - The sketch compiles for the Uno without warnings: 27,990 bytes of flash (86 %), 936 bytes of RAM (45 %).
-- Run on real hardware: a CH340 Uno clone, a BMP280 over SPI, an SSD1306 OLED and a Windows 11 PC with an NVIDIA GPU.
-- **The DHT11 reader has not been run against a real DHT11 yet.**
+- Run on real hardware: a CH340 Uno clone, a BMP280 over SPI, a DHT11, an SSD1306 OLED and a Windows 11 PC with an NVIDIA GPU. 100 seconds of dashboard traffic across six page changes produced no rejected lines.
+- The DHT11 reader runs against a real DHT11 on D2.
 - Not run against a genuine BME280 (chip ID 0x60); the module on hand turned out to be a BMP280.
 - GPU stats need an NVIDIA card. On AMD and Intel GPUs the dashboard says GPU data is unavailable and the OLED shows `--`.
 - OLED text is ASCII only; the font has no Turkish letters or degree sign.

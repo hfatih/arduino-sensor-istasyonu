@@ -25,7 +25,7 @@
 #include <U8x8lib.h>
 
 // ===================== AYARLAR =====================
-#define FW_VERSION "1.3.0"
+#define FW_VERSION "1.3.1"
 
 const uint8_t PIN_BME_CS = 10;
 const uint8_t PIN_DHT = 2;
@@ -166,9 +166,17 @@ void sendPage(const __FlashStringHelper *source) {
   Serial.println(F("\"}"));
 }
 
+// Reddedilen satir da gider (cift tirnaklar tek tirnaga cevrilir) ki sorun gorulebilsin.
 void sendError(const __FlashStringHelper *code) {
   Serial.print(F("{\"type\":\"error\",\"code\":\""));
   Serial.print(code);
+  Serial.print(F("\",\"line\":\""));
+  for (uint8_t i = 0; i < rxLen; i++) {
+    char c = rxBuf[i];
+    if (c == '"' || c == '\\') c = '\'';
+    else if (c < 0x20 || c > 0x7E) c = '?';  // acilistaki cop baytlar JSON'u bozmasin
+    Serial.print(c);
+  }
   Serial.println(F("\"}"));
 }
 
