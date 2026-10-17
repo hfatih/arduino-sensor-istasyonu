@@ -20,6 +20,12 @@
     <img src="https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?logo=windows&style=flat-square" alt="Windows">
     <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License MIT">
   </p>
+  <p align="center">
+    <img src="https://hits.sh/github.com/hfatih/arduino-sensor-istasyonu.svg?style=flat-square&label=views&color=e7a0b9" alt="Views">
+    <a href="https://github.com/hfatih/arduino-sensor-istasyonu/stargazers"><img src="https://img.shields.io/github/stars/hfatih/arduino-sensor-istasyonu?style=flat-square&label=stars&color=f0abc5" alt="Stars"></a>
+    <a href="https://github.com/hfatih/arduino-sensor-istasyonu/forks"><img src="https://img.shields.io/github/forks/hfatih/arduino-sensor-istasyonu?style=flat-square&label=forks&color=dba8c2" alt="Forks"></a>
+    <a href="https://github.com/hfatih/arduino-sensor-istasyonu/commits"><img src="https://img.shields.io/github/last-commit/hfatih/arduino-sensor-istasyonu?style=flat-square&label=last%20commit&color=bca4dd" alt="Last commit"></a>
+  </p>
 </div>
 
 ---
